@@ -5,7 +5,10 @@ import {
   writeStarted, writeCalled, writeSuccess,
   shellStarted, shellCalled, shellToolSuccess,
   shellCreatedEvent, shellExitedEvent,
-  usageUpdate, unknownEvent,
+  usageUpdate, usageUpdateChild, unknownEvent,
+  executionStarted, executionSucceeded,
+  permissionAsked, permissionReplied, formCreated, formReplied,
+  toolFailed,
 } from "./fixtures/events"
 
 test("a write tool call sets currentFile", () => {
@@ -53,4 +56,51 @@ test("input state is not mutated", () => {
   applyEvent(s, writeStarted, 1)
   expect(s.currentFile).toBeNull()
   expect(s.toolNames).toEqual({})
+})
+
+test("session.execution.started makes the session running", () => {
+  expect(applyEvent(emptyState(), executionStarted, 1100).running).toBe(true)
+})
+
+test("session.execution.succeeded returns the signal to idle", () => {
+  const working = foldEvents(emptyState(), [writeStarted, writeCalled, writeSuccess])
+  expect(working.signal.state).toBe("working")
+  const done = applyEvent(working, executionSucceeded, 1110)
+  expect(done.running).toBe(false)
+  expect(done.signal.state).toBe("idle")
+})
+
+test("permission.asked makes the signal waiting while running", () => {
+  const s = foldEvents(emptyState(), [executionStarted, permissionAsked])
+  expect(s.hasPendingHuman).toBe(true)
+  expect(s.signal.state).toBe("waiting")
+})
+
+test("permission.replied clears waiting", () => {
+  const s = foldEvents(emptyState(), [executionStarted, permissionAsked, permissionReplied])
+  expect(s.hasPendingHuman).toBe(false)
+})
+
+test("form.created makes the signal waiting and form.replied clears it", () => {
+  expect(foldEvents(emptyState(), [executionStarted, formCreated]).signal.state).toBe("waiting")
+  expect(foldEvents(emptyState(), [executionStarted, formCreated, formReplied]).hasPendingHuman).toBe(false)
+})
+
+test("tool failure increments failures, feeds an error, and prunes the name", () => {
+  const s = foldEvents(emptyState(), [writeStarted, writeCalled, toolFailed])
+  expect(s.toolFailures).toBe(1)
+  expect(s.toolTotal).toBe(1)
+  expect(s.feed[0]?.state).toBe("error")
+  expect(s.toolNames["call_w"]).toBeUndefined()
+})
+
+test("usage is kept per session and summed", () => {
+  const s = foldEvents(emptyState(), [usageUpdate, usageUpdateChild])
+  expect(s.tokens.input).toBe(258 + 100)
+})
+
+test("tool success prunes the stored name but keeps it in the feed", () => {
+  const s = foldEvents(emptyState(), [writeStarted, writeCalled, writeSuccess])
+  expect(s.toolNames["call_w"]).toBeUndefined()
+  expect(s.feed[0]?.tool).toBe("write")
 })

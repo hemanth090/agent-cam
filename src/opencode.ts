@@ -1,6 +1,6 @@
 import { OpenCode } from "@opencode/client"
 import { Service } from "@opencode/client/service"
-import { emptyState, type CamState, type ToolState } from "./model"
+import { emptyState, sumUsage, type CamState, type TokenUsage, type ToolState } from "./model"
 import { applyEvent, foldEvents } from "./reducer"
 import { computeSignal } from "./signal"
 import { extractCommand, extractFileEdit } from "./tools"
@@ -33,9 +33,13 @@ function toToolState(status: string): ToolState {
   }
 }
 
+function toUsage(t: { input: number; output: number; reasoning: number; cache: { read: number; write: number } }): TokenUsage {
+  return { input: t.input, output: t.output, reasoning: t.reasoning, cacheRead: t.cache.read, cacheWrite: t.cache.write }
+}
+
 export function finalize(state: CamState, now = Date.now()): CamState {
   state.signal = computeSignal({
-    idle: state.sessionID === null,
+    idle: !state.running,
     hasPendingHuman: state.hasPendingHuman,
     now,
     lastSuccessAt: state.lastSuccessAt,
@@ -52,21 +56,35 @@ export function finalize(state: CamState, now = Date.now()): CamState {
  */
 export async function seedTree(client: CamClient, ids: string[]): Promise<CamState> {
   const state = emptyState()
+
+  const active = await client.session.active().catch(() => ({}) as Record<string, unknown>)
+  state.running = ids.some((id) => id in active)
+
   for (const id of ids) {
     if (state.sessionID === null) state.sessionID = id
+
     try {
       const s = await client.session.get({ sessionID: id })
-      state.tokens = {
-        input: state.tokens.input + s.tokens.input,
-        output: state.tokens.output + s.tokens.output,
-        reasoning: state.tokens.reasoning + s.tokens.reasoning,
-        cacheRead: state.tokens.cacheRead + s.tokens.cache.read,
-        cacheWrite: state.tokens.cacheWrite + s.tokens.cache.write,
-      }
+      state.tokensBySession[id] = toUsage(s.tokens)
       if (s.outcome === "failed") state.toolFailures += 1
     } catch {
       // session unreadable — skip
     }
+
+    try {
+      const perms = await client.permission.list({ sessionID: id })
+      if (perms.length > 0) state.hasPendingHuman = true
+    } catch {
+      // permission read unavailable — skip
+    }
+
+    try {
+      const forms = await client.session.form.list({ sessionID: id })
+      if (forms.length > 0) state.hasPendingHuman = true
+    } catch {
+      // form read unavailable — skip
+    }
+
     try {
       const messages = await client.session.context({ sessionID: id })
       for (const m of messages) {
@@ -74,8 +92,7 @@ export async function seedTree(client: CamClient, ids: string[]): Promise<CamSta
         for (const part of m.content) {
           if (part.type !== "tool") continue
           const toolState = toToolState(part.state.status)
-          state.toolNames[part.id] = part.name
-          const input = ("input" in part.state ? (part.state.input as Record<string, unknown>) : {})
+          const input = "input" in part.state ? (part.state.input as Record<string, unknown>) : {}
           if (toolState === "completed") {
             const at = part.time.completed ?? part.time.created
             state.feed = pushFeed(state.feed, { id: part.id, sessionID: id, tool: part.name, summary: part.name, state: "completed", at })
@@ -84,6 +101,8 @@ export async function seedTree(client: CamClient, ids: string[]): Promise<CamSta
           } else if (toolState === "error") {
             state.toolFailures += 1
             state.toolTotal += 1
+          } else {
+            state.toolNames[part.id] = part.name
           }
           const file = extractFileEdit({ name: part.name, state: toolState, input })
           if (file) state.currentFile = file
@@ -95,6 +114,8 @@ export async function seedTree(client: CamClient, ids: string[]): Promise<CamSta
       // context unreadable — skip
     }
   }
+
+  state.tokens = sumUsage(state.tokensBySession)
   return finalize(state)
 }
 
@@ -107,21 +128,47 @@ function eventSessionID(event: unknown): string | undefined {
 
 /**
  * Fold live events for the mirrored sessions into `initial`, calling `onState`
- * with the new state after each. The caller owns reconnection: this stream is
+ * with the new state after each. Newly created child sessions of a mirrored
+ * session are adopted into `ids`. The caller owns reconnection: this stream is
  * live-only and ends on failure (see docs/agent-cam-events.md).
  */
 export async function stream(
   client: CamClient,
-  ids: string[],
+  ids: Set<string>,
   initial: CamState,
   onState: (s: CamState) => void,
   signal: AbortSignal,
 ): Promise<void> {
-  const idSet = new Set(ids)
+  const shellSession = new Map<string, string>()
   let state = initial
+
   for await (const event of client.event.subscribe({ signal })) {
-    const sid = eventSessionID(event)
-    if (sid !== undefined && !idSet.has(sid)) continue
+    const e = event as { type?: string; data?: Record<string, unknown> }
+    const type = e?.type
+
+    if (type === "session.created") {
+      const childID = e.data?.sessionID
+      const parentID = e.data?.parentID
+      if (typeof childID === "string" && typeof parentID === "string" && ids.has(parentID)) ids.add(childID)
+      continue
+    }
+
+    if (type === "shell.created") {
+      // record ownership for every shell, so we can later tell whose exit it is
+      const info = e.data?.info as { id?: string; metadata?: { sessionID?: string } } | undefined
+      const owner = info?.metadata?.sessionID
+      if (typeof info?.id === "string" && owner) shellSession.set(info.id, owner)
+      if (owner !== undefined && !ids.has(owner)) continue
+    } else if (type === "shell.exited" || type === "shell.deleted") {
+      const key = e.data?.id
+      const owner = typeof key === "string" ? shellSession.get(key) : undefined
+      if (typeof key === "string") shellSession.delete(key)
+      if (owner !== undefined && !ids.has(owner)) continue
+    } else {
+      const sid = eventSessionID(event)
+      if (sid !== undefined && !ids.has(sid)) continue
+    }
+
     const next = applyEvent(state, event)
     if (next !== state) {
       state = next

@@ -1,4 +1,4 @@
-import type { CamState, ToolState } from "./model"
+import { sumUsage, type CamState, type TokenUsage, type ToolState } from "./model"
 import { extractCommand, extractFileEdit, type ToolCall } from "./tools"
 import { pushFeed } from "./feed"
 import { computeSignal } from "./signal"
@@ -12,12 +12,18 @@ interface RawEvent {
 }
 
 function cloneState(s: CamState): CamState {
-  return { ...s, feed: [...s.feed], tokens: { ...s.tokens }, toolNames: { ...s.toolNames } }
+  return {
+    ...s,
+    feed: [...s.feed],
+    tokens: { ...s.tokens },
+    tokensBySession: { ...s.tokensBySession },
+    toolNames: { ...s.toolNames },
+  }
 }
 
 function refreshSignal(s: CamState, now: number): CamState {
   s.signal = computeSignal({
-    idle: s.sessionID === null,
+    idle: !s.running,
     hasPendingHuman: s.hasPendingHuman,
     now,
     lastSuccessAt: s.lastSuccessAt,
@@ -28,7 +34,33 @@ function refreshSignal(s: CamState, now: number): CamState {
   return s
 }
 
-export function applyEvent(state: CamState, event: unknown, now = Date.now()): CamState {
+function readUsage(raw: unknown): TokenUsage | null {
+  const t = raw as
+    | { input?: number; output?: number; reasoning?: number; cache?: { read?: number; write?: number } }
+    | undefined
+  if (!t) return null
+  return {
+    input: t.input ?? 0,
+    output: t.output ?? 0,
+    reasoning: t.reasoning ?? 0,
+    cacheRead: t.cache?.read ?? 0,
+    cacheWrite: t.cache?.write ?? 0,
+  }
+}
+
+// Events that can only occur while a session is executing: seeing one means the
+// mirrored tree is active, regardless of whether we observed its start.
+const ACTIVITY_TYPES = new Set([
+  "session.tool.input.started",
+  "session.tool.called",
+  "session.tool.success",
+  "session.tool.failed",
+  "shell.created",
+  "permission.asked",
+  "form.created",
+])
+
+function applyEventInner(state: CamState, event: unknown, now = Date.now()): CamState {
   const e = event as RawEvent
   if (typeof e?.type !== "string") return state
   const data = e.data ?? {}
@@ -56,26 +88,35 @@ export function applyEvent(state: CamState, event: unknown, now = Date.now()): C
     case "session.tool.success": {
       const next = cloneState(state)
       if (typeof data.sessionID === "string") next.sessionID = data.sessionID
-      const name = typeof data.id === "string" ? next.toolNames[data.id] ?? "tool" : "tool"
       const id = typeof data.id === "string" ? data.id : String(at)
+      const name = next.toolNames[id] ?? "tool"
       next.feed = pushFeed(next.feed, { id, sessionID: next.sessionID ?? "", tool: name, summary: name, state: "completed", at })
       if (name === "shell") next.runningCommand = null
+      delete next.toolNames[id]
       next.lastSuccessAt = at
+      next.toolTotal += 1
+      return refreshSignal(next, at)
+    }
+    case "session.tool.failed": {
+      const next = cloneState(state)
+      if (typeof data.sessionID === "string") next.sessionID = data.sessionID
+      const id = typeof data.id === "string" ? data.id : String(at)
+      const name = next.toolNames[id] ?? "tool"
+      next.feed = pushFeed(next.feed, { id, sessionID: next.sessionID ?? "", tool: name, summary: name, state: "error", at })
+      if (name === "shell") next.runningCommand = null
+      delete next.toolNames[id]
+      next.toolFailures += 1
       next.toolTotal += 1
       return refreshSignal(next, at)
     }
     case "session.usage.updated": {
       const next = cloneState(state)
-      if (typeof data.sessionID === "string") next.sessionID = data.sessionID
-      const t = data.tokens as { input?: number; output?: number; reasoning?: number; cache?: { read?: number; write?: number } } | undefined
-      if (t) {
-        next.tokens = {
-          input: t.input ?? 0,
-          output: t.output ?? 0,
-          reasoning: t.reasoning ?? 0,
-          cacheRead: t.cache?.read ?? 0,
-          cacheWrite: t.cache?.write ?? 0,
-        }
+      const sid = typeof data.sessionID === "string" ? data.sessionID : next.sessionID
+      const usage = readUsage(data.tokens)
+      if (sid && usage) {
+        next.tokensBySession[sid] = usage
+        next.tokens = sumUsage(next.tokensBySession)
+        next.sessionID = sid
       }
       return next
     }
@@ -95,9 +136,47 @@ export function applyEvent(state: CamState, event: unknown, now = Date.now()): C
       next.runningCommand = null
       return refreshSignal(next, at)
     }
+    case "session.execution.started": {
+      const next = cloneState(state)
+      if (typeof data.sessionID === "string") next.sessionID = data.sessionID
+      next.running = true
+      return refreshSignal(next, at)
+    }
+    case "session.execution.succeeded":
+    case "session.execution.failed":
+    case "session.execution.interrupted":
+    case "session.idle": {
+      const next = cloneState(state)
+      next.running = false
+      return refreshSignal(next, at)
+    }
+    case "permission.asked":
+    case "form.created": {
+      const next = cloneState(state)
+      if (typeof data.sessionID === "string") next.sessionID = data.sessionID
+      next.hasPendingHuman = true
+      return refreshSignal(next, at)
+    }
+    case "permission.replied":
+    case "form.replied":
+    case "form.cancelled": {
+      const next = cloneState(state)
+      next.hasPendingHuman = false
+      return refreshSignal(next, at)
+    }
     default:
       return state
   }
+}
+
+export function applyEvent(state: CamState, event: unknown, now = Date.now()): CamState {
+  const next = applyEventInner(state, event, now)
+  const e = event as RawEvent
+  if (next !== state && typeof e?.type === "string" && ACTIVITY_TYPES.has(e.type) && !next.running) {
+    next.running = true
+    return refreshSignal(next, typeof e.created === "number" ? e.created : now)
+  }
+  return next
 }
 
 export function foldEvents(state: CamState, events: unknown[], now?: number): CamState {

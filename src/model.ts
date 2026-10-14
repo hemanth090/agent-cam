@@ -50,7 +50,10 @@ export interface CamState {
   signal: Signal
   feed: FeedItem[]
   tokens: TokenUsage
+  tokensBySession: Record<string, TokenUsage>
   lastSuccessAt: number | null
+  // whether the mirrored session tree is currently executing
+  running: boolean
   // signal observables (added per ledger ruling; see progress.md pre-flight)
   toolFailures: number
   toolTotal: number
@@ -68,6 +71,18 @@ export const emptyUsage = (): TokenUsage => ({
   cacheWrite: 0,
 })
 
+const addUsage = (a: TokenUsage, b: TokenUsage): TokenUsage => ({
+  input: a.input + b.input,
+  output: a.output + b.output,
+  reasoning: a.reasoning + b.reasoning,
+  cacheRead: a.cacheRead + b.cacheRead,
+  cacheWrite: a.cacheWrite + b.cacheWrite,
+})
+
+/** Sum per-session usage into one total. */
+export const sumUsage = (bySession: Record<string, TokenUsage>): TokenUsage =>
+  Object.values(bySession).reduce(addUsage, emptyUsage())
+
 export const emptyState = (): CamState => ({
   sessionID: null,
   currentFile: null,
@@ -76,7 +91,9 @@ export const emptyState = (): CamState => ({
   signal: { state: "idle", reason: "no active session" },
   feed: [],
   tokens: emptyUsage(),
+  tokensBySession: {},
   lastSuccessAt: null,
+  running: false,
   toolFailures: 0,
   toolTotal: 0,
   hasPendingHuman: false,

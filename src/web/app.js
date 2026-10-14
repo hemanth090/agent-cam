@@ -18,7 +18,8 @@ const escapeHtml = (s) =>
   String(s).replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
 
 function formatTokens(t) {
-  const total = t.input + t.output + t.reasoning + t.cacheRead;
+  const total = t.input + t.output + t.reasoning + t.cacheRead + t.cacheWrite;
+  if (total >= 1_000_000) return `${(total / 1_000_000).toFixed(1)}M`;
   if (total >= 1000) return `${(total / 1000).toFixed(1)}k`;
   return String(total);
 }
@@ -51,7 +52,7 @@ function render(state) {
   el.signalReason.textContent = state.signal.reason;
   el.signalDot.dataset.state = state.signal.state;
 
-  el.tokens.textContent = `${formatTokens(state.tokens)} tok`;
+  el.tokens.textContent = state.sessionID === null ? "\u2014" : `${formatTokens(state.tokens)} tok`;
 
   el.feed.innerHTML = state.feed
     .map(

@@ -59,4 +59,25 @@ export const usageUpdate = {
   data: { sessionID: "s", cost: 0.1, tokens: { input: 258, output: 99, reasoning: 65, cache: { read: 5120, write: 0 } } },
 }
 
+export const usageUpdateChild = {
+  type: "session.usage.updated",
+  created: 1031,
+  data: { sessionID: "child", cost: 0.05, tokens: { input: 100, output: 10, reasoning: 0, cache: { read: 0, write: 0 } } },
+}
+
+export const executionStarted = { type: "session.execution.started", created: 1100, data: { sessionID: "s" } }
+export const executionSucceeded = { type: "session.execution.succeeded", created: 1110, data: { sessionID: "s" } }
+
+export const permissionAsked = { type: "permission.asked", created: 1120, data: { sessionID: "s", requestID: "p1" } }
+export const permissionReplied = { type: "permission.replied", created: 1130, data: { sessionID: "s", requestID: "p1" } }
+export const formCreated = { type: "form.created", created: 1140, data: { sessionID: "s", formID: "f1" } }
+export const formReplied = { type: "form.replied", created: 1150, data: { sessionID: "s", formID: "f1" } }
+
+export const toolFailed = {
+  type: "session.tool.failed",
+  created: 1160,
+  location: loc,
+  data: { sessionID: "s", assistantMessageID: "m", id: "call_w", error: { type: "x", message: "nope" } },
+}
+
 export const unknownEvent = { type: "totally.made.up", created: 1040, data: {} }
