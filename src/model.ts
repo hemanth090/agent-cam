@@ -55,6 +55,9 @@ export interface CamState {
   toolFailures: number
   toolTotal: number
   hasPendingHuman: boolean
+  // call-id → tool name, because the event stream names the tool separately
+  // from its arguments (see docs/agent-cam-events.md)
+  toolNames: Record<string, string>
 }
 
 export const emptyUsage = (): TokenUsage => ({
@@ -77,4 +80,5 @@ export const emptyState = (): CamState => ({
   toolFailures: 0,
   toolTotal: 0,
   hasPendingHuman: false,
+  toolNames: {},
 })
