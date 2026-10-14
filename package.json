@@ -7,6 +7,9 @@
     "test": "bun test",
     "start": "bun src/index.ts"
   },
+  "bin": {
+    "agent-cam": "./src/index.ts"
+  },
   "devDependencies": {
     "@types/bun": "latest"
   },
