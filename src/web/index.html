@@ -1,0 +1,55 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Agent Cam</title>
+    <link rel="stylesheet" href="/style.css" />
+  </head>
+  <body>
+    <header class="topbar">
+      <span id="dot" class="dot"></span>
+      <h1>Agent Cam</h1>
+      <span id="session" class="muted">connecting…</span>
+    </header>
+
+    <main class="grid">
+      <section class="panel">
+        <div class="label">Current file</div>
+        <div id="file" class="value">—</div>
+        <div id="file-diff" class="muted"></div>
+      </section>
+
+      <section class="panel">
+        <div class="label">Running command</div>
+        <div id="command" class="value mono">—</div>
+      </section>
+
+      <section class="panel wide">
+        <div class="label">Plan</div>
+        <div id="plan" class="value muted">no plan</div>
+      </section>
+
+      <section class="panel">
+        <div class="label">Signal</div>
+        <div class="signal">
+          <span id="signal-dot" class="dot"></span>
+          <span id="signal-state" class="value">—</span>
+        </div>
+        <div id="signal-reason" class="muted"></div>
+      </section>
+
+      <section class="panel">
+        <div class="label">Tokens</div>
+        <div id="tokens" class="value mono">—</div>
+      </section>
+
+      <section class="panel wide">
+        <div class="label">Feed</div>
+        <ul id="feed" class="feed"></ul>
+      </section>
+    </main>
+
+    <script src="/app.js"></script>
+  </body>
+</html>
