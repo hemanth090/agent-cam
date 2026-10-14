@@ -188,11 +188,11 @@ function render(state) {
     const { added, removed } = state.currentFile;
     setText(el.fileDiff, added === null || removed === null ? "" : `+${added} −${removed}`);
   } else {
-    setText(el.file, "—");
+    setText(el.file, "-");
     setText(el.fileDiff, "");
   }
 
-  setText(el.command, state.runningCommand ? `$ ${state.runningCommand.command}` : "—");
+  setText(el.command, state.runningCommand ? `$ ${state.runningCommand.command}` : "-");
 
   setText(el.signalState, state.signal.state);
   setText(el.signalReason, state.signal.reason);
@@ -207,7 +207,7 @@ function render(state) {
   }
 
   if (state.rootID === null) {
-    setText(el.tokens, "—");
+    setText(el.tokens, "-");
     setText(el.tokensSub, "");
   } else {
     const t = state.tokens;
