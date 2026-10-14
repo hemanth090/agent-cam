@@ -10,8 +10,10 @@ export interface TokenUsage {
 
 export interface FileEdit {
   path: string
-  added: number
-  removed: number
+  // line counts are not present in the event stream; null means "unknown"
+  // (see docs/agent-cam-events.md); the page omits counts when null.
+  added: number | null
+  removed: number | null
 }
 
 export interface RunningCommand {
