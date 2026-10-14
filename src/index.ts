@@ -14,7 +14,7 @@ export interface ReconnectOptions {
 
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms))
 
-/** Exponential backoff, capped — so a down service isn't hammered. */
+/** Exponential backoff, capped - so a down service isn't hammered. */
 export function backoffDelay(attempt: number, baseMs = 1000, maxMs = 30_000): number {
   return Math.min(baseMs * 2 ** attempt, maxMs)
 }

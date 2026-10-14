@@ -1,7 +1,7 @@
-# OpenCode V2 event stream — observed shapes
+# OpenCode V2 event stream - observed shapes
 
 Recorded by `scripts/probe-events.ts` (Task 2) against a live service
-(`opencode service status` → `http://127.0.0.1:49374`), watching a subagent
+(`opencode service status` → `http://127.0.0.1:<port>`), watching a subagent
 session that wrote a file and ran `ls -la`.
 
 Reproduce:
@@ -42,7 +42,7 @@ SSE `data` field, already JSON-parsed).
 | `session.tool.called` | `sessionID`, `id`, `input` (parsed args), `executed` | tool runs → **running** |
 | `session.tool.progress` | `sessionID`, `id`, `metadata.status` | live progress |
 | `session.tool.success` | `sessionID`, `id`, `content`, `metadata`, `executed` | tool done → **completed** |
-| `session.tool.*` (error) | — | **not observed**; handle unknown types gracefully |
+| `session.tool.*` (error) | - | **not observed**; handle unknown types gracefully |
 | `session.usage.updated` | `sessionID`, `cost`, `tokens.{input,output,reasoning,cache.{read,write}}` | **tokens** panel |
 | `shell.created` | `info.{id,status:"running",command,cwd,file,metadata.sessionID,time.started}` | **running command** |
 | `shell.exited` | `id`, `exit`, `status` | command finished |
@@ -59,7 +59,7 @@ ignore any unrecognized `type` without throwing.
 ## Findings that change the plan
 
 1. **Tool names**: `write` (file creation/edit) and `shell` (commands); also
-   `subagent`. There is no unified `{name,state,input,output}` tool object —
+   `subagent`. There is no unified `{name,state,input,output}` tool object -
    state is spread across `input.started` → `called` → `success`.
 2. **No added/removed line counts** on any tool event. The `session.diff`
    endpoint is the only source of diffs. So `FileEdit.added/removed` must be

@@ -98,21 +98,21 @@ export async function seedTree(client: CamClient, ids: string[]): Promise<CamSta
       }
       if (s.outcome === "failed") state.toolFailures += 1
     } catch {
-      // session unreadable — skip
+      // session unreadable - skip
     }
 
     try {
       const perms = await client.permission.list({ sessionID: id })
       if (perms.length > 0) state.hasPendingHuman = true
     } catch {
-      // permission read unavailable — skip
+      // permission read unavailable - skip
     }
 
     try {
       const forms = await client.session.form.list({ sessionID: id })
       if (forms.length > 0) state.hasPendingHuman = true
     } catch {
-      // form read unavailable — skip
+      // form read unavailable - skip
     }
 
     try {
@@ -146,7 +146,7 @@ export async function seedTree(client: CamClient, ids: string[]): Promise<CamSta
         }
       }
     } catch {
-      // context unreadable — skip
+      // context unreadable - skip
     }
   }
 
