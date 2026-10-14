@@ -1,7 +1,11 @@
 # Agent Cam
 
-A local, live dashboard that mirrors what your own OpenCode agent is doing, so
-you can stop reading terminal scroll.
+A local, live dashboard that mirrors what your own **OpenCode V2** agent is
+doing, so you can stop reading terminal scroll.
+
+> **Requires OpenCode V2.** It is built against `@opencode/client` 2.x and the
+> V2 event stream and API. V1's API and plugin surface differ, so this will not
+> work against OpenCode V1 as-is.
 
 Panels: **current file**, **running command**, **plan**, **signal** (an honest
 momentum/risk light), **tokens**, and a recent **feed**. It updates in real time
@@ -16,7 +20,7 @@ bun start --directory /path/to/project   # watch sessions in another directory
 bun test             # unit + integration tests
 ```
 
-It finds your running OpenCode background service automatically
+It finds your running OpenCode V2 background service automatically
 (`opencode service status`), picks the most recently active session **in the
 current directory**, mirrors it **and its subagents**, and streams live events.
 The header shows which session you're watching (`main`) and how many `subagent`
@@ -45,7 +49,7 @@ sessions it spawned.
 
 A single Bun/TypeScript process:
 
-1. Discovers the local OpenCode service (`@opencode/client` + `/service`).
+1. Discovers the local OpenCode V2 service (`@opencode/client` + `/service`).
 2. Seeds the active session tree from the read endpoints.
 3. Subscribes to the live `/api/event` stream and folds events into a small
    pure state model.
