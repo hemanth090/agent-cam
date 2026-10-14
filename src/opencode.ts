@@ -5,6 +5,7 @@ import { applyEvent, foldEvents } from "./reducer"
 import { computeSignal } from "./signal"
 import { extractCommand, extractFileEdit } from "./tools"
 import { pushFeed } from "./feed"
+import { STALLED_AFTER_MS } from "./config"
 
 export type CamClient = ReturnType<typeof OpenCode.make>
 
@@ -12,12 +13,33 @@ export type CamClient = ReturnType<typeof OpenCode.make>
 // the reducer directly.
 export { foldEvents }
 
-const STALLED_AFTER_MS = 60_000
-
 export async function connect(): Promise<{ client: CamClient; url: string }> {
   const endpoint = await Service.ensure()
   const client = OpenCode.make({ baseUrl: endpoint.url, headers: Service.headers(endpoint) })
   return { client, url: endpoint.url }
+}
+
+type SessionPage = Awaited<ReturnType<CamClient["session"]["list"]>>
+export type SessionRow = SessionPage["data"][number]
+
+// The generated SessionListInput type is misleading; the API honors a flat
+// { limit, cursor } (verified against v2.0.29).
+type ListInput = { limit?: number; cursor?: string }
+type ListFn = (input?: ListInput, options?: unknown) => Promise<SessionPage>
+
+/** List every session, following the cursor to the last page. */
+export async function listAllSessions(client: CamClient): Promise<SessionRow[]> {
+  const list = client.session.list as unknown as ListFn
+  const all: SessionRow[] = []
+  let cursor: string | undefined
+  for (let page = 0; page < 50; page++) {
+    const res = await list({ limit: 200, cursor })
+    all.push(...res.data)
+    const next = res.cursor?.next ?? undefined
+    if (!next || res.data.length === 0) break
+    cursor = next
+  }
+  return all
 }
 
 function toToolState(status: string): ToolState {
@@ -59,6 +81,7 @@ export async function seedTree(client: CamClient, ids: string[]): Promise<CamSta
 
   const active = await client.session.active().catch(() => ({}) as Record<string, unknown>)
   state.running = ids.some((id) => id in active)
+  state.rootID = ids[0] ?? null
 
   for (const id of ids) {
     if (state.sessionID === null) state.sessionID = id
@@ -66,6 +89,13 @@ export async function seedTree(client: CamClient, ids: string[]): Promise<CamSta
     try {
       const s = await client.session.get({ sessionID: id })
       state.tokensBySession[id] = toUsage(s.tokens)
+      state.agents[id] = {
+        id,
+        parentID: s.parentID ?? null,
+        title: s.title ?? id.slice(-6),
+        running: id in active,
+        lastAction: null,
+      }
       if (s.outcome === "failed") state.toolFailures += 1
     } catch {
       // session unreadable — skip
@@ -90,6 +120,11 @@ export async function seedTree(client: CamClient, ids: string[]): Promise<CamSta
       for (const m of messages) {
         if (m.type !== "assistant") continue
         for (const part of m.content) {
+          if (part.type === "text") {
+            // the agent's plan is its own prose; keep the longest block
+            if (state.planText === null || part.text.length > state.planText.length) state.planText = part.text
+            continue
+          }
           if (part.type !== "tool") continue
           const toolState = toToolState(part.state.status)
           const input = "input" in part.state ? (part.state.input as Record<string, unknown>) : {}
@@ -147,10 +182,10 @@ export async function stream(
     const type = e?.type
 
     if (type === "session.created") {
+      // adopt a child of a mirrored session, then let the reducer record it
       const childID = e.data?.sessionID
       const parentID = e.data?.parentID
       if (typeof childID === "string" && typeof parentID === "string" && ids.has(parentID)) ids.add(childID)
-      continue
     }
 
     if (type === "shell.created") {

@@ -1,5 +1,12 @@
 import { expect, test } from "bun:test"
-import { withReconnect } from "../src/index"
+import { withReconnect, backoffDelay } from "../src/index"
+
+test("backoff grows exponentially and is capped", () => {
+  expect(backoffDelay(0, 1000, 30_000)).toBe(1000)
+  expect(backoffDelay(1, 1000, 30_000)).toBe(2000)
+  expect(backoffDelay(2, 1000, 30_000)).toBe(4000)
+  expect(backoffDelay(10, 1000, 30_000)).toBe(30_000)
+})
 
 test("retries after a failure until the run succeeds", async () => {
   let calls = 0

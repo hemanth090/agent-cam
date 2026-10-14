@@ -1,6 +1,23 @@
 import { expect, test } from "bun:test"
-import { startServer } from "../src/server"
+import { startServer, isAllowedOrigin } from "../src/server"
 import { emptyState } from "../src/model"
+
+test("allows only local origins", () => {
+  expect(isAllowedOrigin("http://127.0.0.1:4317")).toBe(true)
+  expect(isAllowedOrigin("http://localhost:4317")).toBe(true)
+  expect(isAllowedOrigin("http://evil.example")).toBe(false)
+  expect(isAllowedOrigin("not a url")).toBe(false)
+})
+
+test("rejects a websocket upgrade from a foreign origin", async () => {
+  const srv = startServer(() => emptyState(), 0)
+  try {
+    const res = await fetch(`${srv.url}ws`, { headers: { origin: "http://evil.example" } })
+    expect(res.status).toBe(403)
+  } finally {
+    srv.stop()
+  }
+})
 
 test("serves the page and a websocket on 127.0.0.1", async () => {
   const srv = startServer(() => emptyState(), 0)

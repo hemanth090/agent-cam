@@ -80,4 +80,28 @@ export const toolFailed = {
   data: { sessionID: "s", assistantMessageID: "m", id: "call_w", error: { type: "x", message: "nope" } },
 }
 
+export const textEndedShort = {
+  type: "session.text.ended",
+  created: 1200,
+  data: { sessionID: "s", assistantMessageID: "m", ordinal: 0, text: "Done." },
+}
+export const textEndedLong = {
+  type: "session.text.ended",
+  created: 1201,
+  data: {
+    sessionID: "s",
+    assistantMessageID: "m",
+    ordinal: 1,
+    text: "My plan: first read the config, then patch session.ts, then add a regression test.",
+  },
+}
+
+export const sessionCreatedChild = {
+  type: "session.created",
+  created: 1210,
+  data: { sessionID: "child", parentID: "s", title: "Child work", agent: "general" },
+}
+export const childExecutionStarted = { type: "session.execution.started", created: 1211, data: { sessionID: "child" } }
+export const childExecutionSucceeded = { type: "session.execution.succeeded", created: 1212, data: { sessionID: "child" } }
+
 export const unknownEvent = { type: "totally.made.up", created: 1040, data: {} }

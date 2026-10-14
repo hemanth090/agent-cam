@@ -1,17 +1,23 @@
+#!/usr/bin/env bun
 import { emptyState, type CamState } from "./model"
-import { connect, finalize, seedTree, stream } from "./opencode"
-import { selectTree } from "./sessions"
+import { TICK_MS } from "./config"
+import { connect, finalize, listAllSessions, seedTree, stream } from "./opencode"
+import { pickRoot, selectTree } from "./sessions"
 import { startServer } from "./server"
 
 export interface ReconnectOptions {
   delayMs?: number
+  maxDelayMs?: number
   signal?: AbortSignal
   onError?: (e: unknown) => void
 }
 
-const TICK_MS = 5_000
-
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms))
+
+/** Exponential backoff, capped — so a down service isn't hammered. */
+export function backoffDelay(attempt: number, baseMs = 1000, maxMs = 30_000): number {
+  return Math.min(baseMs * 2 ** attempt, maxMs)
+}
 
 /**
  * Run `run` repeatedly, retrying after a failure until it resolves or the
@@ -22,7 +28,8 @@ export async function withReconnect(
   run: (signal: AbortSignal) => Promise<void>,
   options: ReconnectOptions = {},
 ): Promise<void> {
-  const { delayMs = 1000, signal, onError } = options
+  const { delayMs = 1000, maxDelayMs = 30_000, signal, onError } = options
+  let attempt = 0
   while (!signal?.aborted) {
     try {
       await run(signal ?? new AbortController().signal)
@@ -30,7 +37,8 @@ export async function withReconnect(
     } catch (e) {
       if (signal?.aborted) return
       onError?.(e)
-      await sleep(delayMs)
+      await sleep(backoffDelay(attempt, delayMs, maxDelayMs))
+      attempt++
     }
   }
 }
@@ -38,21 +46,25 @@ export async function withReconnect(
 async function main() {
   const args = process.argv.slice(2)
   const dirFlag = args.indexOf("--directory")
-  const directory = dirFlag >= 0 && args[dirFlag + 1] ? args[dirFlag + 1] : process.cwd()
+  const directory = (dirFlag >= 0 ? args[dirFlag + 1] : undefined) ?? process.cwd()
 
   const { client, url } = await connect()
 
-  const list = await client.session.list()
-  const sessions = list.data.map((s) => ({ id: s.id, parentID: s.parentID, time: { updated: s.time.updated } }))
-  const active = await client.session.active()
-  const activeID = Object.keys(active)[0] ?? null
-  const ids = new Set(selectTree(sessions, activeID))
+  const sessions = (await listAllSessions(client)).map((s) => ({
+    id: s.id,
+    parentID: s.parentID,
+    directory: s.location?.directory ?? null,
+    time: { updated: s.time.updated },
+  }))
+  const activeIDs = new Set(Object.keys(await client.session.active()))
+  const rootID = pickRoot(sessions, activeIDs, directory)
+  const ids = new Set(rootID ? selectTree(sessions, rootID) : [])
 
   let state: CamState = ids.size > 0 ? await seedTree(client, [...ids]) : emptyState()
 
   const server = startServer(() => state)
   console.log(
-    `Agent Cam \u2192 ${server.url}  (${ids.size} session(s) via ${url}; directory scoping not yet applied, cwd ${directory})`,
+    `Agent Cam \u2192 ${server.url}  (watching ${directory}; ${ids.size} session(s) via ${url})`,
   )
   if (process.platform === "darwin") {
     try {
@@ -63,10 +75,11 @@ async function main() {
   }
 
   // The signal must age even when no events arrive, or a stalled agent keeps
-  // reading "working" forever.
+  // reading "working" forever. Only broadcast when that actually changed it.
   const tick = setInterval(() => {
+    const before = `${state.signal.state}\u0000${state.signal.reason}`
     state = finalize(state, Date.now())
-    server.broadcast(state)
+    if (`${state.signal.state}\u0000${state.signal.reason}` !== before) server.broadcast(state)
   }, TICK_MS)
 
   const ac = new AbortController()

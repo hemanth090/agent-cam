@@ -1,5 +1,5 @@
 import { expect, test } from "bun:test"
-import { foldEvents, stream } from "../src/opencode"
+import { foldEvents, listAllSessions, stream } from "../src/opencode"
 import { emptyState, type CamState } from "../src/model"
 import { writeStarted, writeCalled, writeSuccess } from "./fixtures/events"
 
@@ -40,6 +40,22 @@ test("stream adopts a child session created after startup", async () => {
   const states: CamState[] = []
   await stream(fakeClient(events) as never, new Set(["s"]), emptyState(), (s) => states.push(s), new AbortController().signal)
   expect(states.at(-1)?.currentFile?.path).toBe("child.ts")
+})
+
+test("listAllSessions follows the cursor to the last page", async () => {
+  const pages = [
+    { data: [{ id: "a" }], cursor: { next: "c1" } },
+    { data: [{ id: "b" }], cursor: { next: null } },
+  ]
+  const inputs: Array<{ cursor?: string }> = []
+  let i = 0
+  const fake = { session: { list: async (input: { cursor?: string }) => {
+    inputs.push(input)
+    return pages[i++]
+  } } }
+  const all = await listAllSessions(fake as never)
+  expect(all.map((s) => (s as { id: string }).id)).toEqual(["a", "b"])
+  expect(inputs[1]?.cursor).toBe("c1")
 })
 
 test("stream drops shell lifecycles from a non-mirrored session", async () => {

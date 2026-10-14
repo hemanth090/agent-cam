@@ -12,13 +12,15 @@ over a local WebSocket.
 ```sh
 bun install
 bun start            # serves http://127.0.0.1:4317/ and opens your browser
-bun start --directory /path/to/project   # (parsed; not yet scope-applied)
+bun start --directory /path/to/project   # watch sessions in another directory
 bun test             # unit + integration tests
 ```
 
 It finds your running OpenCode background service automatically
-(`opencode service status`), mirrors the active session **and its subagents**,
-and streams live events.
+(`opencode service status`), picks the most recently active session **in the
+current directory**, mirrors it **and its subagents**, and streams live events.
+The header shows which session you're watching (`main`) and how many `subagent`
+sessions it spawned.
 
 ## What it does and does not show
 

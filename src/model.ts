@@ -1,4 +1,12 @@
+import { SIGNAL_POLICY } from "./config"
+
 export type ToolState = "streaming" | "running" | "completed" | "error"
+
+/** The thresholds behind the signal, surfaced so the UI can explain itself. */
+export interface SignalPolicy {
+  stalledAfterMs: number
+  failureRatio: number
+}
 
 export interface TokenUsage {
   input: number
@@ -21,9 +29,13 @@ export interface RunningCommand {
   state: ToolState
 }
 
-export interface PlanStep {
-  text: string
-  status: "pending" | "active" | "done"
+// A mirrored session in the tree (the root session and its subagents).
+export interface AgentInfo {
+  id: string
+  parentID: string | null
+  title: string
+  running: boolean
+  lastAction: string | null
 }
 
 export type SignalState = "waiting" | "risky" | "working" | "idle"
@@ -44,10 +56,15 @@ export interface FeedItem {
 
 export interface CamState {
   sessionID: string | null
+  // the session you are watching (the tree root); never follows subagents
+  rootID: string | null
   currentFile: FileEdit | null
   runningCommand: RunningCommand | null
-  plan: PlanStep[] | null
+  // the agent's own plan prose (OpenCode V2 has no todo/plan tool)
+  planText: string | null
+  agents: Record<string, AgentInfo>
   signal: Signal
+  policy: SignalPolicy
   feed: FeedItem[]
   tokens: TokenUsage
   tokensBySession: Record<string, TokenUsage>
@@ -85,10 +102,13 @@ export const sumUsage = (bySession: Record<string, TokenUsage>): TokenUsage =>
 
 export const emptyState = (): CamState => ({
   sessionID: null,
+  rootID: null,
   currentFile: null,
   runningCommand: null,
-  plan: null,
+  planText: null,
+  agents: {},
   signal: { state: "idle", reason: "no active session" },
+  policy: { ...SIGNAL_POLICY },
   feed: [],
   tokens: emptyUsage(),
   tokensBySession: {},

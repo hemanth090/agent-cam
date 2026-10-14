@@ -1,7 +1,26 @@
 export interface SessionNode {
   id: string
   parentID?: string | null
+  directory?: string | null
   time: { updated: number }
+}
+
+/**
+ * Choose the session to watch: prefer the launch directory, and within that the
+ * most recently updated *running* session; fall back to the newest session.
+ */
+export function pickRoot(sessions: SessionNode[], activeIDs: Set<string>, directory: string | null): string | null {
+  if (sessions.length === 0) return null
+
+  let pool = sessions
+  if (directory) {
+    const scoped = sessions.filter((s) => s.directory === directory || s.directory?.startsWith(`${directory}/`))
+    if (scoped.length > 0) pool = scoped
+  }
+
+  const running = pool.filter((s) => activeIDs.has(s.id))
+  const newest = (rows: SessionNode[]) => rows.reduce((a, b) => (b.time.updated > a.time.updated ? b : a))
+  return (running.length > 0 ? newest(running) : newest(pool)).id
 }
 
 /**

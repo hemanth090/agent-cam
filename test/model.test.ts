@@ -11,7 +11,8 @@ test("emptyState starts idle with empty feed and null panels", () => {
   expect(s.sessionID).toBeNull()
   expect(s.currentFile).toBeNull()
   expect(s.runningCommand).toBeNull()
-  expect(s.plan).toBeNull()
+  expect(s.planText).toBeNull()
+  expect(s.agents).toEqual({})
   expect(s.feed).toEqual([])
 })
 

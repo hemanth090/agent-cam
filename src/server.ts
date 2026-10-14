@@ -1,6 +1,7 @@
 import { join } from "node:path"
 import type { ServerWebSocket } from "bun"
 import type { CamState } from "./model"
+import { DEFAULT_PORT } from "./config"
 
 export interface CamServer {
   url: string
@@ -23,7 +24,17 @@ const CONTENT_TYPE: Record<string, string> = {
   "style.css": "text/css; charset=utf-8",
 }
 
-export function startServer(getState: () => CamState, port = 4317): CamServer {
+/** Only local origins may open the dashboard's WebSocket. */
+export function isAllowedOrigin(origin: string): boolean {
+  try {
+    const host = new URL(origin).hostname
+    return host === "127.0.0.1" || host === "localhost" || host === "::1"
+  } catch {
+    return false
+  }
+}
+
+export function startServer(getState: () => CamState, port = DEFAULT_PORT): CamServer {
   const clients = new Set<ServerWebSocket<unknown>>()
 
   const server = Bun.serve({
@@ -32,6 +43,8 @@ export function startServer(getState: () => CamState, port = 4317): CamServer {
     fetch(req, srv) {
       const url = new URL(req.url)
       if (url.pathname === "/ws") {
+        const origin = req.headers.get("origin")
+        if (origin && !isAllowedOrigin(origin)) return new Response("forbidden", { status: 403 })
         if (srv.upgrade(req)) return undefined
         return new Response("websocket upgrade failed", { status: 400 })
       }

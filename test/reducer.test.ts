@@ -8,7 +8,8 @@ import {
   usageUpdate, usageUpdateChild, unknownEvent,
   executionStarted, executionSucceeded,
   permissionAsked, permissionReplied, formCreated, formReplied,
-  toolFailed,
+  toolFailed, textEndedShort, textEndedLong,
+  sessionCreatedChild, childExecutionStarted, childExecutionSucceeded,
 } from "./fixtures/events"
 
 test("a write tool call sets currentFile", () => {
@@ -103,4 +104,27 @@ test("tool success prunes the stored name but keeps it in the feed", () => {
   const s = foldEvents(emptyState(), [writeStarted, writeCalled, writeSuccess])
   expect(s.toolNames["call_w"]).toBeUndefined()
   expect(s.feed[0]?.tool).toBe("write")
+})
+
+test("the plan text is the agent's longest message", () => {
+  const s = foldEvents(emptyState(), [textEndedLong, textEndedShort])
+  expect(s.planText).toBe(textEndedLong.data.text)
+})
+
+test("a child session is listed as an agent with its title", () => {
+  const s = applyEvent(emptyState(), sessionCreatedChild, 1210)
+  expect(s.agents["child"]?.title).toBe("Child work")
+  expect(s.agents["child"]?.parentID).toBe("s")
+})
+
+test("child execution marks the agent running, then done", () => {
+  const running = foldEvents(emptyState(), [sessionCreatedChild, childExecutionStarted])
+  expect(running.agents["child"]?.running).toBe(true)
+  const done = applyEvent(running, childExecutionSucceeded, 1212)
+  expect(done.agents["child"]?.running).toBe(false)
+})
+
+test("a tool call records the agent's last action", () => {
+  const s = foldEvents(emptyState(), [writeStarted, writeCalled])
+  expect(s.agents["s"]?.lastAction).toBe("write src/a.ts")
 })

@@ -1,4 +1,5 @@
 import type { Signal } from "./model"
+import { FAILURE_RATIO } from "./config"
 
 export interface SignalInput {
   idle: boolean
@@ -9,8 +10,6 @@ export interface SignalInput {
   total: number
   stalledAfterMs: number
 }
-
-const FAILURE_RATIO = 0.3
 
 export function computeSignal(input: SignalInput): Signal {
   if (input.idle) return { state: "idle", reason: "no active session" }
